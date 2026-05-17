@@ -6,6 +6,7 @@ from services.resume_extractor import clean_resume_text
 from chains.ats_chain import analyze_resume_chain
 from chains.skill_chain import extract_skills_from_resume_chain
 from chains.interview_chain import generate_question_chain
+from chains.evaluation_chain import evaluate_answer_chain
 
 import os
 from dotenv import load_dotenv
@@ -103,9 +104,80 @@ def render_skills(skills_result):
         st.subheader("All Skills")
         st.markdown(" ".join(f"`{s}`" for s in skills_result.skills_flat_list))
 
+def render_result(evaluation):
+    st.divider()
+    st.subheader("Evaluation")
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric("Overall", f"{evaluation.overall_score}/10")
+
+    with col2:
+        st.metric( "Technical", f"{evaluation.technical_accuracy}/10")
+
+    with col3:
+        st.metric("Clarity", f"{evaluation.clarity}/10")
+
+    st.write("### Strengths")
+    for item in evaluation.strengths:
+        st.write(f"✅ {item}")
+
+    st.write("### Weaknesses")
+    for item in evaluation.weaknesses:
+        st.write(f"❌ {item}")
+
+    st.write("### Improvements")
+    for item in evaluation.improvements:
+        st.write(f"💡 {item}")
+
+    st.write("### Ideal Answer")
+    st.info(evaluation.ideal_answer)
+
+def render_progress_metrics():
+    completed = len(st.session_state.answers)
+    avg_score = (st.session_state.total_score / completed if completed > 0 else 0)
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Questions Completed", completed)
+
+    with col2:
+        st.metric("Average Score", round(avg_score, 1))
+
+    with col3:
+        st.metric("Total Score",st.session_state.total_score)
+
+    progress = min(completed / 10, 1.0)
+    st.progress(progress)
+
+def render_questions_history():
+    with st.expander("Interview History"):
+        for i, (q, a, e) in enumerate(
+            zip(
+                st.session_state.questions,
+                st.session_state.answers,
+                st.session_state.evaluations
+            )
+        ):
+            st.write(f"### Question {i+1}")
+            st.write(q.question)
+            st.write("**Your Answer:**")
+            st.write(a)
+            st.write(f"Score: {e.overall_score}/10")
+
+            st.divider()
+
 def render_questions():
+    st.header("Mock Interview")
+    render_progress_metrics()
+    st.divider()
+
     if st.button("Start Mock Interview"):
         st.session_state.questions = []
+        st.session_state.answers = []
+        st.session_state.evaluations = []
+        st.session_state.total_score = 0
+
         question = generate_question_chain(name=st.session_state.skills.candidate_name,
                 role=st.session_state.skills.target_role,
                 skills=st.session_state.skills.skills_flat_list,
@@ -115,24 +187,37 @@ def render_questions():
         st.session_state.questions.append(question)
 
     if st.session_state.current_question:
-        st.subheader("Interview Question", st.session_state.current_question.difficulty)
-        st.info(st.session_state.current_question)
+        question = st.session_state.current_question
+        st.subheader(f"Question ({question.difficulty})")
+        st.info(question.question)
 
         answer = st.text_area("Your Answer")
         if st.button("Submit Answer"):
+            evaluation = evaluate_answer_chain(question=st.session_state.current_question,
+                answer=answer,
+                difficulty=st.session_state.current_question.difficulty,
+                llm=llm
+            ).invoke({})
+
             st.session_state.answers.append(answer)
+            st.session_state.evaluations.append(evaluation)
+            st.session_state.total_score += evaluation.overall_score
+
             next_question = generate_question_chain(
                 name=st.session_state.skills.candidate_name,
-                role=st.ession_state.skills.target_role,
+                role=st.session_state.skills.target_role,
                 skills=st.session_state.skills.skills_flat_list,
                 previous_questions=st.session_state.questions,
                 llm=llm
             ).invoke({})
             st.session_state.current_question = next_question
             st.session_state.questions.append(next_question)
+            st.session_state.latest_evaluation = evaluation
 
             st.rerun()
 
+    if ("latest_evaluation" in st.session_state and st.session_state.latest_evaluation):
+        render_result(st.session_state.latest_evaluation)
 
 def main():
     st.set_page_config(page_title="AI Resume Analyzer", layout="wide")

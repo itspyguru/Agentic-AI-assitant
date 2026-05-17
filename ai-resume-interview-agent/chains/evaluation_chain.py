@@ -1,5 +1,8 @@
-from pydantic import BaseModel
 from typing import List
+from pydantic import BaseModel, Field
+from langchain_core.prompts import ChatPromptTemplate
+
+from prompts.prompt_reader import get_evaluation_prompt
 
 
 class EvaluationResponse(BaseModel):
@@ -11,3 +14,19 @@ class EvaluationResponse(BaseModel):
     weaknesses: List[str]
     improvements: List[str]
     ideal_answer: str
+
+def create_context(question, answer, difficulty):
+    return f"""
+    System Prompt : {get_evaluation_prompt()}
+    Question : {question}
+    Answer : {answer}
+    Difficulty : {difficulty}
+    """
+
+def evaluate_answer_chain(question, answer, difficulty, llm):
+    context = create_context(question, answer, difficulty)
+    prompt = ChatPromptTemplate.from_messages([("human", context)])
+    structured_llm = llm.with_structured_output(EvaluationResponse)
+    chain = prompt | structured_llm
+
+    return chain
