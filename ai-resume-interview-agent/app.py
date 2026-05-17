@@ -18,7 +18,7 @@ llm = ChatGoogleGenerativeAI(model="gemini-3.1-pro-preview")
 
 SECTIONS = ["ATS Analysis", "Skills", "Interview"]
 
-for key in ("resume_text", "ats", "skills", "source_file","current_question"):
+for key in ("resume_text", "ats", "skills", "source_file","current_question", "latest_evaluation"):
     st.session_state.setdefault(key, None)
 for key in ("questions", "answers", "evaluations"):
     st.session_state.setdefault(key, [])
