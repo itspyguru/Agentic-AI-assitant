@@ -11,3 +11,6 @@ def get_skills_prompt():
     with open(os.path.join(PROMPTS_DIR, "skills_prompt.md")) as file:
         return file.read()
 
+def get_interview_prompt():
+    with open(os.path.join(PROMPTS_DIR, "interview_prompt.md")) as file:
+        return file.read() 

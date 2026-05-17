@@ -5,6 +5,7 @@ from services.pdf_parser import extract_pdf_text
 from services.resume_extractor import clean_resume_text
 from chains.ats_chain import analyze_resume_chain
 from chains.skill_chain import extract_skills_from_resume_chain
+from chains.interview_chain import generate_question_chain
 
 import os
 from dotenv import load_dotenv
@@ -14,10 +15,14 @@ os.environ["GEMINI_API_KEY"] = os.getenv("GEMINI_API_KEY")
 
 llm = ChatGoogleGenerativeAI(model="gemini-3.1-pro-preview")
 
-SECTIONS = ["ATS Analysis", "Skills", "Mock Interview"]
+SECTIONS = ["ATS Analysis", "Skills", "Interview"]
 
-for key in ("resume_text", "ats", "skills", "source_file"):
+for key in ("resume_text", "ats", "skills", "source_file","current_question"):
     st.session_state.setdefault(key, None)
+for key in ("questions", "answers", "evaluations"):
+    st.session_state.setdefault(key, [])
+if "total_score" not in st.session_state:
+    st.session_state.total_score = 0
 
 
 def run_analysis(cleaned_text: str):
@@ -98,6 +103,35 @@ def render_skills(skills_result):
         st.subheader("All Skills")
         st.markdown(" ".join(f"`{s}`" for s in skills_result.skills_flat_list))
 
+def render_questions():
+    if st.button("Start Mock Interview"):
+        st.session_state.questions = []
+        question = generate_question_chain(name=st.session_state.skills.candidate_name,
+                role=st.session_state.skills.target_role,
+                skills=st.session_state.skills.skills_flat_list,
+                previous_questions=[],
+                llm=llm).invoke({})
+        st.session_state.current_question = question
+        st.session_state.questions.append(question)
+
+    if st.session_state.current_question:
+        st.subheader("Interview Question", st.session_state.current_question.difficulty)
+        st.info(st.session_state.current_question)
+
+        answer = st.text_area("Your Answer")
+        if st.button("Submit Answer"):
+            st.session_state.answers.append(answer)
+            next_question = generate_question_chain(
+                name=st.session_state.skills.candidate_name,
+                role=st.ession_state.skills.target_role,
+                skills=st.session_state.skills.skills_flat_list,
+                previous_questions=st.session_state.questions,
+                llm=llm
+            ).invoke({})
+            st.session_state.current_question = next_question
+            st.session_state.questions.append(next_question)
+
+            st.rerun()
 
 
 def main():
@@ -131,6 +165,8 @@ def main():
         render_ats(st.session_state.ats)
     elif section == "Skills":
         render_skills(st.session_state.skills)
+    elif section == "Interview":
+        render_questions()
 
 
 main()
